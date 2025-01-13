@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Text, View } from "react-native"
-import { Camera, useCameraDevice, useCameraPermission } from "react-native-vision-camera";
+import { Text, View } from "react-native";
+import { Camera, useCameraDevice } from "react-native-vision-camera";
 
 export const BarcodeScanner = (): React.JSX.Element => {
     const device = useCameraDevice('back')
@@ -10,7 +10,7 @@ export const BarcodeScanner = (): React.JSX.Element => {
     const checkCameraPermission = async () => {
         const status = await Camera.getCameraPermissionStatus();
         console.log('status', status);
-        
+
         if (status === 'granted') {
             setCameraPermission(true);
         } else if (status === 'not-determined' || status === 'denied') {
@@ -21,7 +21,7 @@ export const BarcodeScanner = (): React.JSX.Element => {
             setCameraPermission(false);
         }
     };
-    
+
     useEffect(() => {
         checkCameraPermission();
     }, []);
@@ -31,17 +31,17 @@ export const BarcodeScanner = (): React.JSX.Element => {
     } else if (!cameraPermission) {
         return <Text>Camera permission not granted</Text>;
     }
-    
+
     if (device == null) return <Text>No Device</Text>
-    
+
     return (
-      <View style={{ flex: 1 }}>
-        <Text>Real camera!</Text>
-        <Camera
-            device={device}
-            isActive={true}
-            style={{ flex: 1, borderWidth: 1, borderColor: 'red', height: 300 }}
-        />
-      </View>
+        <View style={{ flex: 1 }}>
+            <Text>Real camera!</Text>
+            <Camera
+                device={device}
+                isActive={true}
+                style={{ flex: 1, borderWidth: 1, borderColor: 'red', height: 300 }}
+            />
+        </View>
     )
 }
