@@ -13,6 +13,8 @@ interface BookData {
   number_of_pages?: number
   edition?: string
   subjects?: string[]
+  amazonPrice?: number
+  amazonLink?: string
   scannedAt: Date
 }
 
@@ -64,6 +66,30 @@ export const BarcodeScanner = (): React.JSX.Element => {
       if (response.ok) {
         const data = await response.json()
 
+        // Resolve author names when only keys are provided
+        let resolvedAuthors: Array<{ name: string }> | undefined = undefined
+        if (data.authors && Array.isArray(data.authors) && data.authors.length > 0) {
+          resolvedAuthors = []
+          for (const author of data.authors) {
+            if (author.name) {
+              resolvedAuthors.push({ name: author.name })
+            } else if (author.key) {
+              try {
+                const authResp = await fetch(`https://openlibrary.org${author.key}.json`)
+                if (authResp.ok) {
+                  const authData = await authResp.json()
+                  if (authData.name) {
+                    resolvedAuthors.push({ name: authData.name })
+                  }
+                }
+              } catch (e) {
+                console.log('Error fetching author info:', e)
+              }
+            }
+          }
+          if (resolvedAuthors.length === 0) resolvedAuthors = undefined
+        }
+
         // Try to fetch additional data from works endpoint if available
         let subjects: string[] = []
         if (data.works && data.works.length > 0) {
@@ -81,7 +107,9 @@ export const BarcodeScanner = (): React.JSX.Element => {
         const bookData: BookData = {
           isbn,
           ...data,
+          authors: resolvedAuthors ?? data.authors,
           subjects,
+          ...(await fetchAmazonPrice(isbn)),
           scannedAt: new Date(),
         }
         setBooks((prevBooks) => [...prevBooks, bookData])
@@ -95,6 +123,52 @@ export const BarcodeScanner = (): React.JSX.Element => {
       console.error('Error fetching ISBN data:', error)
       // Remove from scanned set if fetch failed
       scannedISBNs.current.delete(isbn)
+    }
+  }
+
+  const fetchAmazonPrice = async (isbn: string): Promise<{ price?: number; link?: string }> => {
+    try {
+      // Try Open Library first for ASIN
+      const response = await fetch(
+        `https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&jscmd=data&format=json`
+      )
+      if (response.ok) {
+        const data = await response.json()
+        const key = `ISBN:${isbn}`
+        if (data[key] && data[key].identifiers && data[key].identifiers.amazon) {
+          const asin = data[key].identifiers.amazon[0]
+          const amazonLink = `https://www.amazon.com/dp/${asin}`
+          console.log('Amazon ASIN found:', asin)
+
+          // Try to fetch price using CheapShark or similar free API
+          try {
+            const priceResponse = await fetch(
+              `https://api.rainforestapi.com/api/v1/products?asin=${asin}&api_key=demo`
+            )
+            if (priceResponse.ok) {
+              const priceData = await priceResponse.json()
+              if (priceData.product && priceData.product.buybox_winner) {
+                const price = priceData.product.buybox_winner.price
+                if (price) {
+                  return {
+                    price: parseFloat(String(price).replace(/[^0-9.]/g, '')),
+                    link: amazonLink,
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            console.log('Could not fetch actual price:', e)
+          }
+
+          // Return link even if price fetch failed
+          return { link: amazonLink }
+        }
+      }
+      return {}
+    } catch (error) {
+      console.log('Could not fetch Amazon data:', error)
+      return {}
     }
   }
 
@@ -206,6 +280,8 @@ export const BarcodeScanner = (): React.JSX.Element => {
       'Number of Pages',
       'Edition',
       'Subjects',
+      'Amazon Price',
+      'Amazon Link',
       'Scanned At',
     ]
 
@@ -235,6 +311,8 @@ export const BarcodeScanner = (): React.JSX.Element => {
           escapeCSVField(book.number_of_pages),
           escapeCSVField(book.edition),
           escapeCSVField(book.subjects?.join('; ')),
+          escapeCSVField(book.amazonPrice ? `$${book.amazonPrice.toFixed(2)}` : ''),
+          escapeCSVField(book.amazonLink),
           escapeCSVField(book.scannedAt?.toLocaleString()),
         ].join(',')
       ),
@@ -400,6 +478,33 @@ export const BarcodeScanner = (): React.JSX.Element => {
                         Subjects: {book.subjects.slice(0, 3).join(', ')}
                         {book.subjects.length > 3 && ` (+${book.subjects.length - 3} more)`}
                       </Text>
+                    )}
+                    {book.amazonPrice && (
+                      <View style={{ marginBottom: 8 }}>
+                        <Text
+                          style={{
+                            color: '#34C759',
+                            fontSize: 18,
+                            fontWeight: 'bold',
+                            marginBottom: 4,
+                          }}
+                        >
+                          ${book.amazonPrice.toFixed(2)}
+                        </Text>
+                        {book.amazonLink && (
+                          <TouchableOpacity onPress={() => Linking.openURL(book.amazonLink!)}>
+                            <Text
+                              style={{
+                                color: '#007AFF',
+                                textDecorationLine: 'underline',
+                                fontSize: 14,
+                              }}
+                            >
+                              View on Amazon
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
                     )}
                     <Text style={{ color: '#999', fontSize: 12 }}>
                       Scanned: {book.scannedAt.toLocaleString()}
